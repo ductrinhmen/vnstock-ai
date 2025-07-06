@@ -59,3 +59,40 @@ if response.status_code == 200 and response.json()['data']:
     st.dataframe(df[["open", "high", "low", "close", "EMA20", "EMA50", "EMA200", "RSI"]].tail(10).round(2))
 else:
     st.warning("⚠️ Không tìm thấy dữ liệu cho mã cổ phiếu này. Vui lòng kiểm tra lại.")
+import openai
+
+# Lấy API key từ secrets.toml
+openai.api_key = st.secrets["OPENAI_API_KEY"]
+
+def generate_ai_comment(rsi, ema20, ema50, ema200, signal):
+    xu_huong = "Tăng" if signal == 1 else "Giảm" if signal == -1 else "Trung tính"
+    prompt = f"""
+    Bạn là một chuyên gia phân tích kỹ thuật chứng khoán.
+    Dưới đây là các chỉ báo:
+    - RSI(14): {rsi:.2f}
+    - EMA20: {ema20:.2f}
+    - EMA50: {ema50:.2f}
+    - EMA200: {ema200:.2f}
+    - Tín hiệu giao cắt EMA: {xu_huong}
+
+    Hãy viết một đoạn nhận định ngắn bằng tiếng Việt, phân tích xu hướng hiện tại của cổ phiếu, và gợi ý hành động (Mua/Bán/Chờ).
+    """
+
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
+
+# Gọi hàm để lấy phân tích AI
+ai_comment = generate_ai_comment(
+    latest["RSI"],
+    latest["EMA20"],
+    latest["EMA50"],
+    latest["EMA200"],
+    latest["Signal"]
+)
+
+# Hiển thị trong app
+st.subheader("🧠 Nhận định từ AI:")
+st.info(ai_comment)
