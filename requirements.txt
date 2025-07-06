@@ -3,3 +3,5 @@ pandas
 matplotlib
 pandas_ta
 requests
+openai
+nginx
