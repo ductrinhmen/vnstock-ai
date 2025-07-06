@@ -96,3 +96,16 @@ ai_comment = generate_ai_comment(
 # Hiển thị trong app
 st.subheader("🧠 Nhận định từ AI:")
 st.info(ai_comment)
+import openai
+
+openai.api_key = st.secrets["OPENAI_API_KEY"]
+
+response = openai.ChatCompletion.create(
+    model="gpt-3.5-turbo",
+    messages=[
+        {"role": "user", "content": "Phân tích kỹ thuật cổ phiếu HPG theo RSI, EMA, tín hiệu giao cắt..."}
+    ]
+)
+
+st.write("🧠 Nhận định từ AI:")
+st.info(response["choices"][0]["message"]["content"])
