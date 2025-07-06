@@ -109,3 +109,33 @@ response = openai.ChatCompletion.create(
 
 st.write("🧠 Nhận định từ AI:")
 st.info(response["choices"][0]["message"]["content"])
+import openai
+
+openai.api_key = st.secrets["OPENAI_API_KEY"]
+
+# Giả sử bạn đã có các chỉ số:
+rsi = 55.2
+ema20 = 23500
+ema50 = 23200
+ema200 = 22500
+signal = 1  # 1 = mua, -1 = bán, 0 = trung lập
+
+prompt = f"""
+Bạn là chuyên gia phân tích kỹ thuật chứng khoán.
+Phân tích cổ phiếu HPG với dữ liệu sau:
+- RSI(14): {rsi}
+- EMA20: {ema20}
+- EMA50: {ema50}
+- EMA200: {ema200}
+- Tín hiệu EMA giao cắt: {"MUA" if signal==1 else "BÁN" if signal==-1 else "CHỜ"}
+
+Hãy viết nhận định ngắn gọn và gợi ý hành động (mua/bán/chờ).
+"""
+
+response = openai.ChatCompletion.create(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": prompt}]
+)
+
+st.subheader("🧠 Nhận định từ AI:")
+st.info(response["choices"][0]["message"]["content"])
