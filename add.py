@@ -96,46 +96,100 @@ ai_comment = generate_ai_comment(
 # Hiển thị trong app
 st.subheader("🧠 Nhận định từ AI:")
 st.info(ai_comment)
+import requests
+import pandas as pd
+import pandas_ta as ta
+import streamlit as st
+import matplotlib.pyplot as plt
 import openai
 
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+# --- Cấu hình trang ---
+st.set_page_config(page_title="AI Phân tích kỹ thuật cổ phiếu", layout="wide")
+st.title("📈 AI PHÂN TÍCH KỸ THUẬT CỔ PHIẾU VIỆT NAM")
 
-response = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo",
-    messages=[
-        {"role": "user", "content": "Phân tích kỹ thuật cổ phiếu HPG theo RSI, EMA, tín hiệu giao cắt..."}
-    ]
-)
+# --- Nhập mã cổ phiếu ---
+symbol = st.text_input("Nhập mã cổ phiếu (ví dụ: HPG, VNM, FPT):", "HPG").upper()
 
-st.write("🧠 Nhận định từ AI:")
-st.info(response["choices"][0]["message"]["content"])
-import openai
+# --- Lấy dữ liệu từ VNDIRECT ---
+url = f"https://finfo-api.vndirect.com.vn/v4/stock_prices?sort=date&size=300&symbol={symbol}"
+response = requests.get(url)
 
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+if response.status_code == 200 and response.json()['data']:
+    data = response.json()["data"]
+    df = pd.DataFrame(data)
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date")
+    df.set_index("date", inplace=True)
+    df[["open", "high", "low", "close", "volume"]] = df[["open", "high", "low", "close", "volume"]].astype(float)
 
-# Giả sử bạn đã có các chỉ số:
-rsi = 55.2
-ema20 = 23500
-ema50 = 23200
-ema200 = 22500
-signal = 1  # 1 = mua, -1 = bán, 0 = trung lập
+    # --- Tính chỉ báo kỹ thuật ---
+    df["EMA20"] = ta.ema(df["close"], length=20)
+    df["EMA50"] = ta.ema(df["close"], length=50)
+    df["EMA200"] = ta.ema(df["close"], length=200)
+    df["RSI"] = ta.rsi(df["close"], length=14)
+    df.ta.bbands(close='close', length=20, std=2, append=True)
 
-prompt = f"""
-Bạn là chuyên gia phân tích kỹ thuật chứng khoán.
-Phân tích cổ phiếu HPG với dữ liệu sau:
-- RSI(14): {rsi}
-- EMA20: {ema20}
-- EMA50: {ema50}
-- EMA200: {ema200}
-- Tín hiệu EMA giao cắt: {"MUA" if signal==1 else "BÁN" if signal==-1 else "CHỜ"}
+    # --- Tín hiệu mua bán ---
+    df["Signal"] = 0
+    df.loc[(df["EMA20"] > df["EMA50"]) & (df["EMA20"].shift(1) <= df["EMA50"].shift(1)), "Signal"] = 1
+    df.loc[(df["EMA20"] < df["EMA50"]) & (df["EMA20"].shift(1) >= df["EMA50"].shift(1)), "Signal"] = -1
 
-Hãy viết nhận định ngắn gọn và gợi ý hành động (mua/bán/chờ).
-"""
+    # --- Hiển thị kết quả phân tích mới nhất ---
+    latest = df.iloc[-1]
 
-response = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo",
-    messages=[{"role": "user", "content": prompt}]
-)
+    st.subheader("📊 Kết quả phân tích mới nhất")
+    st.write(f"**Mã**: {symbol}")
+    st.write(f"**Ngày**: {latest.name.date()}")
+    st.write(f"**Giá đóng cửa**: {latest['close']:.0f} VND")
+    st.write(f"**EMA20**: {latest['EMA20']:.0f} | EMA50: {latest['EMA50']:.0f} | EMA200: {latest['EMA200']:.0f}")
+    st.write(f"**RSI(14)**: {latest['RSI']:.2f}")
 
-st.subheader("🧠 Nhận định từ AI:")
-st.info(response["choices"][0]["message"]["content"])
+    if latest['Signal'] == 1:
+        st.success("✅ Tín hiệu: **NÊN MUA** (EMA20 cắt lên EMA50)")
+    elif latest['Signal'] == -1:
+        st.error("❌ Tín hiệu: **NÊN BÁN** (EMA20 cắt xuống EMA50)")
+    else:
+        st.info("🤔 Chưa có tín hiệu rõ ràng.")
+
+    # --- AI nhận định từ dữ liệu mới nhất ---
+    openai.api_key = st.secrets["OPENAI_API_KEY"]
+
+    prompt = f"""
+    Bạn là chuyên gia phân tích kỹ thuật.
+    Dưới đây là dữ liệu cổ phiếu {symbol}:
+    - RSI(14): {latest["RSI"]:.2f}
+    - EMA20: {latest["EMA20"]:.2f}
+    - EMA50: {latest["EMA50"]:.2f}
+    - EMA200: {latest["EMA200"]:.2f}
+    - Tín hiệu EMA: {"MUA" if latest['Signal'] == 1 else "BÁN" if latest['Signal'] == -1 else "CHỜ"}
+
+    Hãy viết nhận định ngắn gọn bằng tiếng Việt và khuyến nghị hành động.
+    """
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        st.subheader("🧠 Nhận định từ AI:")
+        st.info(response["choices"][0]["message"]["content"])
+    except Exception as e:
+        st.warning(f"⚠️ Lỗi khi gọi GPT: {e}")
+
+    # --- Biểu đồ giá và EMA ---
+    st.subheader("📉 Biểu đồ giá và các đường EMA")
+    fig, ax = plt.subplots(figsize=(14,6))
+    ax.plot(df.index, df["close"], label="Giá đóng cửa", color='gray')
+    ax.plot(df.index, df["EMA20"], label="EMA20", color='red')
+    ax.plot(df.index, df["EMA50"], label="EMA50", color='blue')
+    ax.plot(df.index, df["EMA200"], label="EMA200", color='black')
+    ax.legend()
+    ax.set_title(f"Phân tích kỹ thuật cổ phiếu {symbol}")
+    st.pyplot(fig)
+
+    # --- Dữ liệu bảng gần nhất ---
+    st.subheader("📅 Dữ liệu 10 phiên gần nhất")
+    st.dataframe(df[["open", "high", "low", "close", "EMA20", "EMA50", "EMA200", "RSI"]].tail(10).round(2))
+
+else:
+    st.warning("⚠️ Không tìm thấy dữ liệu cho mã cổ phiếu này. Vui lòng kiểm tra lại.")
